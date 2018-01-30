@@ -2188,7 +2188,7 @@ int find_my_index(connection_wrapper_t *connection,int mode,char *ep_service){
 
 	if(mode == AUTHORITY_MODE)
 	   for(i=0; i<p->number_of_authorities; i++){
-		  temp = calloc(strlen(p->authority_eid[i])+strlen(ep_service),sizeof(char));
+		  temp = calloc(strlen(p->authority_eid[i])+strlen(ep_service) + 1,sizeof(char));
 		  strcpy(temp,p->authority_eid[i]);
 		  strcpy(temp+strlen(p->authority_eid[i]),ep_service);
 		  if(strcmp(temp,connection->local_eid.uri)==0)
