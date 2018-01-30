@@ -795,8 +795,8 @@ int read_RSA_key_from_file(const char* filename,int key_type,RSA *rsa){
     int res;
 
 
-    ext_buffer = calloc(3,sizeof(char));
-    memcpy(ext_buffer,filename+strlen(filename)-3,3);
+    ext_buffer = calloc(4,sizeof(char));
+    memcpy(ext_buffer,filename+strlen(filename)-3,4);
 
     if(strcmp(ext_buffer,"PEM")==0 || strcmp(ext_buffer,"pem")==0){
        free(ext_buffer);
