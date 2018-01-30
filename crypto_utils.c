@@ -1787,8 +1787,8 @@ int verify_with_public_key_from_file(const char *filename,const char *key_type,c
     char *ext_buffer;
     unsigned char hash[20];
 
-    ext_buffer = calloc(3,sizeof(char));
-    memcpy(ext_buffer,filename+strlen(filename)-3,3);
+    ext_buffer = calloc(4,sizeof(char));
+    memcpy(ext_buffer,filename+strlen(filename)-3,4);
 
     if(strcmp(key_type,"RSA") != 0 && strcmp(key_type,"DSA") != 0)
        return -1;
