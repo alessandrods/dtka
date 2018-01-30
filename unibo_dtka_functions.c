@@ -2078,9 +2078,9 @@ int create_bulletin(unsigned char*bulletin){
        length = length + snprintf(NULL,0,"%d\n",first->records);
        for(i=0; i<first->records; i++){
           length = length + sizeof(int);
-          length = length + strlen(list->record->EID);
+          length = length + strlen(list->record->EID) +1;
           length = length + sizeof(int);
-          length = length + strlen(list->record->acknowledged);
+          length = length + strlen(list->record->acknowledged) +1;
           length = length + sizeof(unsigned int);
           length = length + sizeof(unsigned int);
           length = length + sizeof(unsigned int);
@@ -2109,13 +2109,13 @@ int create_bulletin(unsigned char*bulletin){
     cursor = cursor + length;
 
     for(i=0; i<first->records; i++){
-    	temp = strlen(list->record->EID);
+    	temp = strlen(list->record->EID) +1;
         memcpy(cursor,&temp,sizeof(int));
         cursor = cursor + sizeof(int);
         memcpy(cursor,list->record->EID,temp);
         cursor = cursor + temp;
 
-        temp = strlen(list->record->acknowledged);
+        temp = strlen(list->record->acknowledged) +1;
         memcpy(cursor,&temp,sizeof(int));
         cursor = cursor + sizeof(int);
         memcpy(cursor,list->record->acknowledged,temp);
