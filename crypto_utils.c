@@ -1630,7 +1630,7 @@ int sign_with_private_key_from_file(const char *filename, const char *key_type, 
 
        }
 
-	   if(strcmp(ext_buffer,"DER")==0 || strcmp(ext_buffer,"der")==0){
+	   else if(strcmp(ext_buffer,"DER")==0 || strcmp(ext_buffer,"der")==0){
 	      free(ext_buffer);
 
     	  key_bio = BIO_new(BIO_s_file());
