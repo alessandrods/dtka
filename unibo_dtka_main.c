@@ -3,7 +3,7 @@
  **           Carlo Caini (project supervisor), carlo.caini@unibo.it
  **
  **
- **  Copyright (c) 2017, Alma Mater Studiorum, University of Bologna
+ **  Copyright (c) 2018, Alma Mater Studiorum, University of Bologna
  **  All rights reserved.
  ********************************************************/
 
@@ -33,30 +33,33 @@ int main(int argc,char** argv){
     }
 
     //Parsing single Option.
-    if(argc == 2 && (strcmp(argv[1],"--help")==0 || strcmp(argv[1],"--cryptotest")==0 || strcmp(argv[1],"--erasuretest")==0 || strcmp(argv[1],"--client")==0 || strcmp(argv[1],"--authority")==0 || strcmp(argv[1],"--configure")==0 || strcmp(argv[1],"--connectiontest")==0 || strcmp(argv[1],"--keygen")==0)){  //Options --help,
+    if(argc == 2 && (strcmp(argv[1],"--help")==0 || strcmp(argv[1],"--cryptotest")==0 || strcmp(argv[1],"--erasuretest")==0 || strcmp(argv[1],"--client")==0 || strcmp(argv[1],"--authority")==0 || strcmp(argv[1],"--configure")==0 || strcmp(argv[1],"--connectiontest")==0 || strcmp(argv[1],"--keygen")==0 || strcmp(argv[1],"--receivekey")==0)){  //Options --help,
        if(strcmp(argv[1],"--help")==0){ // Printing help page.
           printf("\nUnibo-DTKA Help page..");
           printf("\nParameters...");
-          printf("\n\t--help for this help");
-          printf("\n\t--cryptotest for testing the cryptographic API of the application");
-          printf("\n\t--erasuretest for testing the erasure API of the application");
-          printf("\n\t--connectiontest for testing the connection API of the application");
-          printf("\n\t--configure [-f configfile] for configure the application");
-          printf("\n\t--keygen [-f configfile] for key pair generation");
-          printf("\n\t--authority [-f configfile] for start the authority node application.");
-	      printf("\n\t--client [-f configfile] for start the client node application.");
+          printf("\n\t--help                             for this help page.");
+          printf("\n\t--cryptotest                       for testing the cryptographic API of the application.");
+          printf("\n\t--erasuretest                      for testing the erasure API of the application.");
+          printf("\n\t--connectiontest                   for testing the connection API of the application.");
+          printf("\n\t--configure [-f configfile]        for configure the application.");
+          printf("\n\t--keygen [-f configfile]           for key pair generation.");
+          printf("\n\t--authority [-f configfile]        for start the authority node application.");
+	      printf("\n\t--client [-f configfile]           for start the client node application.");
+	      printf("\n\t--sendkey -f keyfile authority-EID for sending a key to an authority node.");
+	      printf("\n\t--sendkey -keygen authority-EID    for sending a new generated key to an authority node.");
+	      printf("\n\t--receivekey                       for receiving a single key from a client node.");
           printf("\n");
-          printf("\nReturn values");
-          printf("\n\t0 all OK.");
-          printf("\n\t1 Config file does not exist.");
-          printf("\n\t2 Read Error in the config file.");
-          printf("\n\t3 Syntax Error.");
-          printf("\n\t4 Write error in the config file.");
-          printf("\n\t5 Error in crypthographic library.");
-          printf("\n\t6 Error in erasure library.");
-          printf("\n\t7 Not enough memory.");
-          printf("\n\t8 Key algorithm unknown.");
-          printf("\n\t9 No bundle daemon is running or detected.");
+          printf("\nReturn values to the Operative System");
+          printf("\n\t0  all OK.");
+          printf("\n\t1  Config file does not exist.");
+          printf("\n\t2  Read Error in the config file.");
+          printf("\n\t3  Syntax Error.");
+          printf("\n\t4  Write error in the config file.");
+          printf("\n\t5  Error in crypthographic library.");
+          printf("\n\t6  Error in erasure library.");
+          printf("\n\t7  Not enough memory.");
+          printf("\n\t8  Key algorithm unknown.");
+          printf("\n\t9  No bundle daemon is running or detected.");
           printf("\n\t10 Error opening Bundle Protocol Handle.");
           printf("\n\t11 Public or Private Key file not found.");
 	      printf("\n\t12 Write error on RSA key file.");
@@ -69,10 +72,16 @@ int main(int argc,char** argv){
           return 0;
 
        }
+       //Option --receivekey, Receive a new key from a client node
+       if(strcmp(argv[1],"--receivekey")==0){
+          printf("\nUnibo-DTKA: Receiving a key from a client node.");
+          receive_key();
+       }
+
        //Option --cryptotest, Testing program API.
        if(strcmp(argv[1],"--cryptotest")==0){
           printf("\nUnibo-DTKA: Testing the application....");
-          printf("\n\nUnibo-DTKA: Testing cryptographic API");
+          printf("\n\nUnibo-DTKA: Testing cryptographic openssl API");
           if(do_cryptographic_tests()==-1)
              return UNIBO_DTKA_EXIT_STATUS_CRYPTO_LIBRARY_ERROR;
 
@@ -81,7 +90,7 @@ int main(int argc,char** argv){
        }
        //Option --erasuretest, Testing program API
        if(strcmp(argv[1],"--erasuretest")==0){
-          printf("\n\nUnibo-DTKA: Testing erasure code API");
+          printf("\n\nUnibo-DTKA: Testing erasure code zfec API");
           if(do_erasure_test()==-1)
              return UNIBO_DTKA_EXIT_STATUS_ERASURE_LIBRARY_ERROR;
 

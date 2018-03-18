@@ -3,13 +3,13 @@
  **           Carlo Caini (project supervisor), carlo.caini@unibo.it
  **
  **
- **  Copyright (c) 2017, Alma Mater Studiorum, University of Bologna
+ **  Copyright (c) 2018, Alma Mater Studiorum, University of Bologna
  **  All rights reserved.
  ********************************************************/
 
 #include "unibo_dtka_includes.h"
 #include "connection_wrapper.h"
-#include "crypto_utils.h"
+#include "security_layer.h"
 #include "unibo_dtka_functions.h"
 #include "unibo_dtka_types.h"
 
@@ -43,13 +43,13 @@ void run_client_mode(){
 
 	fprintf(p->fp_log,"\nInitialization of the connection parameters....");
 
-    wrapper_init(&sending_key_connection, BP_PAYLOAD_MEM, 'N', p->receive_time, priority, 1000,"dtka","4000");
-    wrapper_init(&receive_bulletin_connection,BP_PAYLOAD_MEM, 'N', p->receive_time, priority, 1000,"bulletin","4002");
+    cw_wrapper_init(&sending_key_connection, BP_PAYLOAD_MEM, 'N', p->receive_time, priority, 1000,"dtka","4000");
+    cw_wrapper_init(&receive_bulletin_connection,BP_PAYLOAD_MEM, 'N', p->receive_time, priority, 1000,"bulletin","4002");
 
     fprintf(p->fp_log,"\nRegistration to the bundle daemon....");
 
-    register_to_dtn_daemon(&sending_key_connection);
-    register_to_dtn_daemon(&receive_bulletin_connection);
+    cw_register_to_dtn_daemon(&sending_key_connection);
+    cw_register_to_dtn_daemon(&receive_bulletin_connection);
 
     fprintf(p->fp_log,"\nLocal EID = %s\n", sending_key_connection.local_eid.uri);
 

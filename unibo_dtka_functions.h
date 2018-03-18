@@ -3,7 +3,7 @@
  **           Carlo Caini (project supervisor), carlo.caini@unibo.it
  **
  **
- **  Copyright (c) 2017, Alma Mater Studiorum, University of Bologna
+ **  Copyright (c) 2018, Alma Mater Studiorum, University of Bologna
  **  All rights reserved.
  ********************************************************/
 
@@ -13,8 +13,8 @@
 #include "unibo_dtka_includes.h"
 #include "unibo_dtka_types.h"
 #include "connection_wrapper.h"
-#include "crypto_utils.h"
-#include "fec_utils.h"
+#include "security_layer.h"
+#include "erasure_layer.h"
 
 /* Detects which type of OS is running. */
 /* Returns: 1 for Windows based OS, 0 for Unix based OS.
@@ -35,6 +35,7 @@ int serialize_record(unsigned char *serialized_records);
 int find_my_index(connection_wrapper_t *connection,int mode,char *ep_service);
 int create_bulletin(unsigned char *bulletin);
 int write_config_to_file(const dtka_parameters *parameters,const char *filename);
+void receive_key();
 /* Clears the stdin buffer.
  */
 

@@ -3,14 +3,14 @@
  **           Carlo Caini (project supervisor), carlo.caini@unibo.it
  **
  **
- **  Copyright (c) 2017, Alma Mater Studiorum, University of Bologna
+ **  Copyright (c) 2018, Alma Mater Studiorum, University of Bologna
  **  All rights reserved.
  ********************************************************/
 
 #include "unibo_dtka_includes.h"
 #include "connection_wrapper.h"
-#include "crypto_utils.h"
-#include "fec_utils.h"
+#include "security_layer.h"
+#include "erasure_layer.h"
 #include "unibo_dtka_functions.h"
 #include "unibo_dtka_types.h"
 #include "unibo_dtka_authority.h"
@@ -67,9 +67,9 @@ void *publish_bulletin_thread_authority(){
 
 	   fprintf(p->fp_log,"\nUnibo-DTKA Authority: Bulletin Created.");
 
-	   encoded_message = encode_blocks(p->information_block_number,p->information_block_number+p->total_block_number,bulletin,length);
+	   encoded_message = el_encode_blocks(p->information_block_number,p->information_block_number+p->total_block_number,bulletin,length);
 	   bulletin_hash = (unsigned char*)malloc(sizeof(char)*(SHA256_DIGEST_LENGTH*2+1));
-	   hash_message_text((char*)bulletin,(char*)bulletin_hash,SHA256HASH);
+	   sl_hash_message_text((char*)bulletin,(char*)bulletin_hash,SHA256HASH);
 
 	   length = (SHA256_DIGEST_LENGTH*2+1);
 	   for(i=0; i<p->block_per_authority; i++)
@@ -109,7 +109,7 @@ void *publish_bulletin_thread_authority(){
 		  url = calloc(127,sizeof(char));
 		  strcpy(url,p->authority_eid[i]);
 		  strcat(url,"/bulletin");
-          wrapper_send(&sending_bulletin_connection,serialized_blocks,length,url);
+          cw_wrapper_send(&sending_bulletin_connection,serialized_blocks,length,url);
           free(url);
 	  }
 
@@ -117,13 +117,11 @@ void *publish_bulletin_thread_authority(){
 		  url = calloc(127,sizeof(char));
 		  strcpy(url,p->clients_eid[i]);
 		  strcat(url,"/bulletin");
-		  wrapper_send(&sending_bulletin_connection,serialized_blocks,length,url);
+		  cw_wrapper_send(&sending_bulletin_connection,serialized_blocks,length,url);
 		  free(url);
 	  }
-	 // free(_bulletin);
+
 	  free(bulletin);
-	  free(bulletin_hash);
-	  free(serialized_blocks);
    }
 
    return (void*)0;
@@ -150,8 +148,8 @@ void *receive_consensus_thread_authority(){
     consensus = 1;
 
     for(;;){
-	printf("\ninit Wrapper_Receive\n");
-       wrapper_receive(&receive_consensus_connection);
+
+       cw_wrapper_receive(&receive_consensus_connection);
 	   fprintf(p->fp_log,"\nUnibo-DTKA Authority: Consensus Received from %s",receive_consensus_connection.bundle_source);
 	   cursor = receive_consensus_connection.message;
 
@@ -205,11 +203,10 @@ void *send_consensus_thread_authority(){
           temp = calloc(127,sizeof(char));
           strcpy(temp,p->authority_eid[i]);
           strcpy(temp+strlen(temp),"/consensus");
-          wrapper_send(&sending_consensus_connection,serialized_consensus,consensus_length,temp);
+          cw_wrapper_send(&sending_consensus_connection,serialized_consensus,consensus_length,temp);
           free(temp);
        }
        receive_status = 1;
-       free(serialized_consensus);
        sleep(p->bulletin_time+p->grace_time);
     }
 
@@ -241,7 +238,7 @@ void *receiving_key_thread_authority(){
 	for(;;){
 	   if(receive_status == 0)
 		  continue;
-       wrapper_receive(&receiving_key_connection);
+       cw_wrapper_receive(&receiving_key_connection);
        fprintf(p->fp_log,"\nUnibo-DTKA Authority: Key Received from %s",receiving_key_connection.bundle_source);
        EID = calloc(127,sizeof(char));
        if(EID == NULL)
@@ -325,12 +322,6 @@ void *receiving_key_thread_authority(){
     	   fprintf(p->fp_log,"\nUnibo-DTKA Authority: Consensus Rejected!");
     	   fflush(p->fp_log);
        }
-	free(EID);
-	free(data);
-	//free(list->record->EID);
-	//free(list->record->acknowledged);
-	//free(list->record->data_value);
-	//free(list->record);
 	}
 
 	return (void*)0;
@@ -852,22 +843,22 @@ void run_authority_mode(){
 	fprintf(p->fp_log,"\nInitialization of the connection parameters for the key receiver thread....");
 	fflush(p->fp_log);
 
-	wrapper_init(&sending_key_connection,BP_PAYLOAD_MEM,'N',-1,priority,30,"dtka","4000");
-    wrapper_init(&receiving_key_connection, BP_PAYLOAD_MEM, 'N', -1, priority, 30,"dtka","4000");
-    wrapper_init(&sending_consensus_connection, BP_PAYLOAD_MEM, 'N', -1, priority, 30,"consensus","4001");
-    wrapper_init(&receive_consensus_connection, BP_PAYLOAD_MEM, 'N', -1, priority, 30,"consensus","4001");
-    wrapper_init(&sending_bulletin_connection,BP_PAYLOAD_MEM, 'N', -1,priority,30,"bulletin","4002");
-    wrapper_init(&receive_bulletin_connection,BP_PAYLOAD_MEM, 'N', -1,priority,30,"bulletin","4002");
+	cw_wrapper_init(&sending_key_connection,BP_PAYLOAD_MEM,'N',-1,priority,30,"dtka","4000");
+    cw_wrapper_init(&receiving_key_connection, BP_PAYLOAD_MEM, 'N', -1, priority, 30,"dtka","4000");
+    cw_wrapper_init(&sending_consensus_connection, BP_PAYLOAD_MEM, 'N', -1, priority, 30,"consensus","4001");
+    cw_wrapper_init(&receive_consensus_connection, BP_PAYLOAD_MEM, 'N', -1, priority, 30,"consensus","4001");
+    cw_wrapper_init(&sending_bulletin_connection,BP_PAYLOAD_MEM, 'N', -1,priority,30,"bulletin","4002");
+    cw_wrapper_init(&receive_bulletin_connection,BP_PAYLOAD_MEM, 'N', -1,priority,30,"bulletin","4002");
 
     fprintf(p->fp_log,"\nRegistration to the bundle daemon....");
     fflush(p->fp_log);
 
-    register_to_dtn_daemon(&sending_key_connection);
-    register_to_dtn_daemon(&receiving_key_connection);
-    register_to_dtn_daemon(&sending_consensus_connection);
-    register_to_dtn_daemon(&receive_consensus_connection);
-    register_to_dtn_daemon(&sending_bulletin_connection);
-    register_to_dtn_daemon(&receive_bulletin_connection);
+    cw_register_to_dtn_daemon(&sending_key_connection);
+    cw_register_to_dtn_daemon(&receiving_key_connection);
+    cw_register_to_dtn_daemon(&sending_consensus_connection);
+    cw_register_to_dtn_daemon(&receive_consensus_connection);
+    cw_register_to_dtn_daemon(&sending_bulletin_connection);
+    cw_register_to_dtn_daemon(&receive_bulletin_connection);
 
     fprintf(p->fp_log,"\nLocal EID for Keys = %s", receiving_key_connection.local_eid.uri);
     fprintf(p->fp_log,"\nLocal EID for Consensus = %s", sending_consensus_connection.local_eid.uri);

@@ -3,7 +3,7 @@
  **           Carlo Caini (project supervisor), carlo.caini@unibo.it
  **
  **
- **  Copyright (c) 2017, Alma Mater Studiorum, University of Bologna
+ **  Copyright (c) 2018, Alma Mater Studiorum, University of Bologna
  **  All rights reserved.
  ********************************************************/
 

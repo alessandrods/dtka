@@ -3,14 +3,14 @@
  **           Carlo Caini (project supervisor), carlo.caini@unibo.it
  **
  **
- **  Copyright (c) 2017, Alma Mater Studiorum, University of Bologna
+ **  Copyright (c) 2018, Alma Mater Studiorum, University of Bologna
  **  All rights reserved.
  ********************************************************/
 
  /**
   * @file connection_wrapper.h
   * @author Alessandro Di Stanislao
-  * @date Jannuary, 2017
+  * @date March, 2018
   * @brief This file contains functions for the use of the Abstraction Layer API.
   *  
   */  
@@ -76,7 +76,7 @@ typedef struct connection_wrapper_t connection_wrapper_t;
  * 
 */
 
-void wrapper_init(connection_wrapper_t *connection, al_bp_bundle_payload_location_t pl_location, char eid_format, int receive_time, al_bp_bundle_priority_t bundle_priority, al_bp_timeval_t bundle_expiration,char *ep_string,char *ep_num_service);
+void cw_wrapper_init(connection_wrapper_t *connection, al_bp_bundle_payload_location_t pl_location, char eid_format, int receive_time, al_bp_bundle_priority_t bundle_priority, al_bp_timeval_t bundle_expiration,char *ep_string,char *ep_num_service);
 
 /**
  * @name Register to DTN daemon
@@ -92,7 +92,7 @@ void wrapper_init(connection_wrapper_t *connection, al_bp_bundle_payload_locatio
  * 
 */
 
-void register_to_dtn_daemon(connection_wrapper_t *connection);
+void cw_register_to_dtn_daemon(connection_wrapper_t *connection);
 
 /**
  * @name Connection Wrapper Receive
@@ -107,7 +107,7 @@ void register_to_dtn_daemon(connection_wrapper_t *connection);
  * @retval none.
  * 
 */
-void wrapper_receive(connection_wrapper_t *connection);
+void cw_wrapper_receive(connection_wrapper_t *connection);
 
 /**
  * @name Connection Wrapper Close
@@ -123,7 +123,7 @@ void wrapper_receive(connection_wrapper_t *connection);
  * 
 */
 
-void wrapper_close(connection_wrapper_t *connection);
+void cw_wrapper_close(connection_wrapper_t *connection);
 
 /**
  * @name Connection Wrapper Error Handler
@@ -139,7 +139,7 @@ void wrapper_close(connection_wrapper_t *connection);
  * 
 */
 
-void wrapper_error_handler(al_bp_error_t error);
+void cw_wrapper_error_handler(al_bp_error_t error);
 
 /**
  * @name Connection Wrapper Send
@@ -155,6 +155,6 @@ void wrapper_error_handler(al_bp_error_t error);
  * 
 */
 
-void wrapper_send(connection_wrapper_t *connection,unsigned char *message,int message_length, char *uri);
+void cw_wrapper_send(connection_wrapper_t *connection,unsigned char *message,int message_length, char *uri);
 
 #endif

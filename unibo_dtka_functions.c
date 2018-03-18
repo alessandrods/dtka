@@ -3,18 +3,20 @@
  **           Carlo Caini (project supervisor), carlo.caini@unibo.it
  **
  **
- **  Copyright (c) 2017, Alma Mater Studiorum, University of Bologna
+ **  Copyright (c) 2018, Alma Mater Studiorum, University of Bologna
  **  All rights reserved.
  ********************************************************/
 
 #include "unibo_dtka_includes.h"
 #include "connection_wrapper.h"
-#include "crypto_utils.h"
-#include "fec_utils.h"
+#include "erasure_layer.h"
+#include "security_layer.h"
 #include "unibo_dtka_types.h"
 #include "unibo_dtka_client.h"
 #include "unibo_dtka_authority.h"
 #include "unibo_dtka_functions.h"
+
+#define DEBUG 1
 
 extern struct dtka_parameters parameters;
 extern struct record_list rec_list;
@@ -38,6 +40,99 @@ int detect_windows_OS(){
     return -1;
 }
 
+void receive_key(){
+
+	unsigned short EID_length;
+	unsigned char *EID;
+	unsigned int effective_time;
+	unsigned int assertion_time;
+	unsigned int data_length;
+	unsigned char *data;
+	char filename[255];
+	al_bp_bundle_priority_t priority;
+	int res;
+	int i;
+
+	dtka_parameters *p;
+
+	p = &parameters;
+	connection_wrapper_t receiving_key_connection;
+
+	strcpy(filename,"defaults.conf");
+    read_parameters_from_file(filename,&parameters);
+
+    fprintf(parameters.fp_log,"\nUnibo-DTKA: Number of Authorities: %d",parameters.number_of_authorities);
+    for(i=0; i<parameters.number_of_authorities; i++){
+       fprintf(parameters.fp_log,"\nUnibo-DTKA: Authority %d EID: %s",i,parameters.authority_eid[i]);
+       fprintf(parameters.fp_log,"\nUnibo-DTKA: Authority %d Key File: %s",i,parameters.authority_key_file[i]);
+    }
+
+    fprintf(parameters.fp_log,"\nUnibo-DTKA: Number of Clients: %d",parameters.number_of_clients);
+    for(i=0; i<parameters.number_of_clients; i++){
+       fprintf(parameters.fp_log,"\nUnibo-DTKA: Client %d EID: %s",i,parameters.clients_eid[i]);
+       fprintf(parameters.fp_log,"\nUnibo-DTKA: Client %d Key File: %s",i,parameters.clients_key_file[i]);
+    }
+
+    fprintf(parameters.fp_log,"\nUnibo-DTKA: Number of Information Blocks: %d",parameters.information_block_number);
+    fprintf(parameters.fp_log,"\nUnibo-DTKA: Number of Total Blocks: %d",parameters.total_block_number);
+    fprintf(parameters.fp_log,"\nUnibo-DTKA: Public Key Algorithm: %s",parameters.key_algorithm);
+    fprintf(parameters.fp_log,"\nUnibo-DTKA: Key Length: %d",parameters.key_length);
+    fprintf(parameters.fp_log,"\nUnibo-DTKA: Hash Algorithm: %s",parameters.hash_algorithm);
+    fprintf(parameters.fp_log,"\nUnibo-DTKA: Padding Type: %s",parameters.padding_type);
+    fprintf(parameters.fp_log,"\nUnibo-DTKA: RSA Number: %d",parameters.rsa_exp);
+    fprintf(parameters.fp_log,"\nUnibo-DTKA: Public Key File: %s",parameters.public_key_file);
+    fprintf(parameters.fp_log,"\nUnibo-DTKA: Private Key File: %s",parameters.private_key_file);
+    fprintf(parameters.fp_log,"\nUnibo-DTKA: New Public Key File: %s",parameters.new_public_key_file);
+    fprintf(parameters.fp_log,"\nUnibo-DTKA: New Private Key File: %s",parameters.new_private_key_file);
+    fprintf(parameters.fp_log,"\nUnibo-DTKA: Key Format: %s",parameters.key_format);
+    fprintf(parameters.fp_log,"\nUnibo-DTKA: Expiration Time: %d s.",parameters.expiration_time);
+    fprintf(parameters.fp_log,"\nUnibo-DTKA: Bulletin Publish Time: %d s.",parameters.bulletin_time);
+    fprintf(parameters.fp_log,"\nUnibo-DTKA: Bulletin Save File: %s",parameters.bulletin_file);
+    fprintf(parameters.fp_log,"\nUnibo-DTKA: Key Publish Time: %d s.",parameters.key_publish_interval);
+    fprintf(parameters.fp_log,"\nUnibo-DTKA: Grace Period : %d s.",parameters.grace_time);
+    fprintf(parameters.fp_log,"\nUnibo-DTKA: Receive Time: %d",parameters.receive_time);
+    fprintf(parameters.fp_log,"\nUnibo-DTKA: Bundle Priority: %s",parameters.bundle_priority);
+    fprintf(parameters.fp_log,"\nUnibo-DTKA: Block per Authority: %d",parameters.block_per_authority);
+
+    if(parameters.sign == 1)
+       fprintf(parameters.fp_log,"\nUnibo-DTKA: Bundles are signed with Private Key");
+
+    if(parameters.sign == 0)
+       fprintf(parameters.fp_log,"\nUnibo-DTKA: Bundles are sent via BSP");
+
+    cw_wrapper_init(&receiving_key_connection, BP_PAYLOAD_MEM, 'N', -1, priority, 30,"dtka","4000");
+
+    fprintf(p->fp_log,"\nRegistration to the bundle daemon....");
+    fflush(p->fp_log);
+
+    cw_register_to_dtn_daemon(&receiving_key_connection);
+
+
+    fprintf(p->fp_log,"\nReady to receive a client node key....");
+    fflush(p->fp_log);
+
+    cw_wrapper_receive(&receiving_key_connection);
+    fprintf(p->fp_log,"\nUnibo-DTKA Authority: Key Received from %s",receiving_key_connection.bundle_source);
+    EID = calloc(127,sizeof(char));
+    if(EID == NULL)
+       unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
+
+    data = calloc(receiving_key_connection.message_length,sizeof(char));
+    if(data == NULL)
+       unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
+
+    res = deserialize_message(receiving_key_connection.message,&EID_length,EID,&effective_time,&assertion_time,&data_length,data);
+
+    if(res == 1){
+    	  fprintf(p->fp_log,"\nUnibo-DTKA Authority: Key Asserted!");
+    	  fflush(p->fp_log);
+    }else{
+    	   fprintf(p->fp_log,"\nUnibo-DTKA Authority: Consensus Rejected!");
+    	   fflush(p->fp_log);
+    }
+
+    free(EID);
+}
 void *sending_key_thread_client(){
 
 	dtka_parameters *p;
@@ -61,7 +156,7 @@ void *sending_key_thread_client(){
 	for(;;){
 
        key_length = prepare_key_message(NULL);
-	   key = calloc(key_length+1,sizeof(char));
+	   key = calloc(key_length,sizeof(char));
 	   if(key == NULL)
 		  unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
 	   key_length = prepare_key_message(key);
@@ -85,7 +180,7 @@ void *sending_key_thread_client(){
     	  temp = calloc(127,sizeof(char));
     	  temp = strcat(temp,p->authority_eid[i]);
     	  temp = strcat(temp,"/dtka");
-          wrapper_send(connection,buffer,buffer_length,temp);
+          cw_wrapper_send(connection,buffer,buffer_length,temp);
           fprintf(p->fp_log,"\nUnibo-DTKA Client: Public key sent to %s",p->authority_eid[i]);
           fflush(p->fp_log);
           free(temp);
@@ -122,21 +217,30 @@ int generate_key_pairs(const char *filename){
 	p = malloc(sizeof(dtka_parameters));
 	read_parameters_from_file(filename,p);
 
-
 	result = -1;
 
+	printf("\nUnibo-DTKA: Generating %s key pairs...",p->key_algorithm);
+
 	if(strcmp(p->key_algorithm,"DSA")==0 && strcmp(p->key_format,"PEM")==0)
-	   result = generate_DSA_key_pair_files(p->key_length,p->rand_length,p->private_key_file,p->public_key_file,PEM_FORMAT);
+	   result = sl_generate_DSA_key_pair_files(p->key_length,p->rand_length,p->private_key_file,p->public_key_file,PEM_FORMAT);
 
 	if(strcmp(p->key_algorithm,"DSA")==0 && strcmp(p->key_format,"DER")==0)
-	   result = generate_DSA_key_pair_files(p->key_length,p->rand_length,p->private_key_file,p->public_key_file,DER_FORMAT);
+	   result = sl_generate_DSA_key_pair_files(p->key_length,p->rand_length,p->private_key_file,p->public_key_file,DER_FORMAT);
 
 	if(strcmp(p->key_algorithm,"RSA")==0 && strcmp(p->key_format,"PEM")==0)
-       result = generate_RSA_key_pair_files(p->key_length,p->rsa_exp,p->private_key_file,p->public_key_file,PEM_FORMAT);
+       result = sl_generate_RSA_key_pair_files(p->key_length,p->rsa_exp,p->private_key_file,p->public_key_file,PEM_FORMAT);
 
 	if(strcmp(p->key_algorithm,"RSA")==0 && strcmp(p->key_format,"DER")==0)
-       result = generate_RSA_key_pair_files(p->key_length,p->rsa_exp,p->private_key_file,p->public_key_file,DER_FORMAT);
+       result = sl_generate_RSA_key_pair_files(p->key_length,p->rsa_exp,p->private_key_file,p->public_key_file,DER_FORMAT);
 
+	if (result > 0){
+	   printf("\nUnibo-DTKA: Key are successfully generated.");
+	   printf("\nUnibo-DTKA: Private key is stored in %s",p->private_key_file);
+	   printf("\nUnibo-DTKA: Public key is stored in %s\n",p->public_key_file);
+	}else{
+	   printf("\nUnibo-DTKA: There was an error in key generation.\n");
+	   result = UNIBO_DTKA_EXIT_STATUS_KEY_GENERATION_ERROR;
+	}
 	return result;
 }
 
@@ -150,55 +254,51 @@ int configure_application(const char *filename){
 
     p = &parameters;
 
-    p->dtka_output = malloc(sizeof(char)*6);
+    p->dtka_output = malloc(sizeof(char)*6+1);
     if(p->dtka_output == NULL)
        unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
 
-    p->log_file = malloc(sizeof(char)*255);
+    p->log_file = malloc(sizeof(char)*255+1);
     if(p->log_file == NULL)
     	unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
 
-    p->hash_algorithm = malloc(sizeof(char)*9);
+    p->hash_algorithm = malloc(sizeof(char)*9+1);
     if(p->hash_algorithm == NULL)
        unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
 
-    p->key_algorithm = malloc(sizeof(char)*3);
+    p->key_algorithm = malloc(sizeof(char)*3+1);
     if(p->key_algorithm == NULL)
        unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
 
-    p->padding_type = malloc(sizeof(char)*22);
+    p->padding_type = malloc(sizeof(char)*22+1);
     if(p->padding_type == NULL)
        unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
 
-    p->public_key_file = malloc(sizeof(char)*255);
+    p->public_key_file = malloc(sizeof(char)*255+1);
     if(p->public_key_file == NULL)
        unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
 
-    p->private_key_file = malloc(sizeof(char)*255);
+    p->private_key_file = malloc(sizeof(char)*255+1);
     if(p->private_key_file == NULL)
        unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
 
-    p->new_public_key_file = malloc(sizeof(char)*255);
-    if(p->new_public_key_file == NULL)
-       unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
-
-    p->new_private_key_file = malloc(sizeof(char)*255);
-    if(p->new_private_key_file == NULL)
-       unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
-
-    p->key_format = malloc(sizeof(char)*3);
+    p->key_format = malloc(sizeof(char)*3+1);
     if(p->key_format == NULL)
        unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
 
-    p->bundle_priority = malloc(sizeof(char)*9);
+    p->bundle_priority = malloc(sizeof(char)*9+1);
     if(p->bundle_priority == NULL)
        unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
 
-    p->bundle_sign = malloc(sizeof(char)*4);
+    p->bundle_sign = malloc(sizeof(char)*3+1);
     if(p->bundle_sign == NULL)
        unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
 
-	printf("\nUnibo-DTKA: Configuration Settings...");
+    p->bulletin_file = malloc(sizeof(char)*255+1);
+    if(p->bulletin_file == NULL)
+       unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
+
+    printf("\nUnibo-DTKA: Configuration Settings...");
     fflush(stdout);
 
     fp = fopen(filename,"r");
@@ -210,11 +310,11 @@ int configure_application(const char *filename){
     	   result = scanf("%c",&response);
     	   fflush(stdout);
     	   clear_stdin();
-    	   if(result > 0 && response == 'N'){
+    	   if(result > 0 && (response == 'N' || response == 'n')){
     		  fclose(fp);
     		  exit(UNIBO_DTKA_EXIT_STATUS_OK);
     	   }
-    	   if(result >0 && response == 'Y'){
+    	   if(result >0 && (response == 'Y' || response == 'y')){
     		  fclose(fp);
     		  break;
     	   }
@@ -226,18 +326,19 @@ int configure_application(const char *filename){
        fflush(stdout);
        result = scanf("%c",&response);
        clear_stdin();
-       if(result > 0 && response == 'N'){
+       if(result > 0 && (response == 'N' || response == 'n')){
     	   strcpy(p->dtka_output,"STDOUT");
     	   strcpy(p->log_file,"NONE");
     	   break;
        }
-       if(result > 0 && response == 'Y'){
+       if(result > 0 && (response == 'Y' || response == 'y')){
     	   strcpy(p->dtka_output,"FILE");
     	   for(;;){
     		   printf("\nPlease enter the log filename: ");
-    		   printf("\n-> ");
+    		   printf("\n[255 Characters MAX]");
+               printf("\n-> ");
     		   fflush(stdout);
-    		   result = scanf("%s",p->log_file);
+    		   result = scanf("%255s",p->log_file);
     		   clear_stdin();
     		   if(result > 0)
     			   break;
@@ -284,9 +385,10 @@ int configure_application(const char *filename){
 
 	for(;;){
 	   printf("\nPlease enter the name of the hash algorithm for bulletin (MD4, MD5, RIPEMD160, SHA224, SHA256, SHA384, SHA512): ");
-	   printf("\n-> ");
+	   printf("\n[9 Character MAX]");
+       printf("\n-> ");
 	   fflush(stdout);
-	   result = scanf("%s",p->hash_algorithm);
+	   result = scanf("%9s",p->hash_algorithm);
 	   clear_stdin();
 	   if(result > 0 ){
 		  if(strcmp(p->hash_algorithm,"MD4")==0 || strcmp(p->hash_algorithm,"MD5")==0 || strcmp(p->hash_algorithm,"RIPEMD160")==0 || strcmp(p->hash_algorithm,"SHA224")==0 || strcmp(p->hash_algorithm,"SHA256")==0 || strcmp(p->hash_algorithm,"SHA384")==0 || strcmp(p->hash_algorithm,"SHA512")==0)
@@ -298,9 +400,10 @@ int configure_application(const char *filename){
 
 	for(;;){
 	   printf("\nPlease enter the public key algorithm used for sign bundles (DSA, RSA): ");
-	   printf("\n-> ");
+	   printf("\n[3 Characters MAX]");
+       printf("\n-> ");
 	   fflush(stdout);
-	   result = scanf("%s",p->key_algorithm);
+	   result = scanf("%3s",p->key_algorithm);
 	   clear_stdin();
 	   if(result > 0){
 		   if(strcmp(p->key_algorithm,"DSA")==0 || strcmp(p->key_algorithm,"RSA")==0)
@@ -324,9 +427,10 @@ int configure_application(const char *filename){
 
 	for(;;){
 	   printf("\nPlease enter the padding type for RSA algorithm (RSA_PKCS1_PADDING, RSA_PKSC1_OAEP_PADDING, RSA_SSLV23_PADDING, RSA_SSLV23_PADDING, RSA_NO_PADDING): ");
+	   printf("\n[22 Characters MAX]");
 	   printf("\n-> ");
 	   fflush(stdout);
-	   result = scanf("%s",p->padding_type);
+	   result = scanf("%22s",p->padding_type);
        clear_stdin();
        if(result > 0){
     	   if(strcmp(p->padding_type,"RSA_PKCS1_PADDING")==0 || strcmp(p->padding_type,"RSA_PKSC1_OAEP_PADDING")==0 || strcmp(p->padding_type,"RSA_SSLV23_PADDING")==0 || strcmp(p->padding_type,"RSA_NO_PADDING")==0)
@@ -335,6 +439,7 @@ int configure_application(const char *filename){
     		  printf("\nUnknown padding type.");
        }
 	}
+
 
 	for(;;){
 	   printf("\nPlease enter the RSA exponent for the key generator: ");
@@ -362,9 +467,10 @@ int configure_application(const char *filename){
 
 	for(;;){
 	   printf("\nPlease enter the format of the public and private keys (PEM, DER): ");
-	   printf("\n-> ");
+	   printf("\n[3 Characters MAX]");
+       printf("\n-> ");
 	   fflush(stdout);
-	   result = scanf("%s",p->key_format);
+	   result = scanf("%3s",p->key_format);
 	   clear_stdin();
 	   if(result > 0){
 		  if(strcmp(p->key_format,"PEM")==0 || strcmp(p->key_format,"DER")==0)
@@ -376,9 +482,10 @@ int configure_application(const char *filename){
 
 	for(;;){
 	   printf("\nPlease enter the own public key file: ");
-	   printf("\n-> ");
+	   printf("\n[255 Characters MAX]");
+       printf("\n-> ");
 	   fflush(stdout);
-	   result = scanf("%s",p->public_key_file);
+	   result = scanf("%255s",p->public_key_file);
 	   clear_stdin();
 	   if(result > 0)
          break;
@@ -386,9 +493,10 @@ int configure_application(const char *filename){
 
 	for(;;){
 	   printf("\nPlease enter the own private key file: ");
-	   printf("\n-> ");
+	   printf("\n[255 Characters MAX]");
+       printf("\n-> ");
 	   fflush(stdout);
-	   result = scanf("%s",p->private_key_file);
+	   result = scanf("%255s",p->private_key_file);
        clear_stdin();
        if(result > 0)
     	 break;
@@ -456,9 +564,10 @@ int configure_application(const char *filename){
 
 	for(;;){
 	   printf("\nPlease enter the bundle priority (BULK, NORMAL, EXPEDITED): ");
-	   printf("\n-> ");
+	   printf("\n[9 Characters MAX]");
+       printf("\n-> ");
 	   fflush(stdout);
-	   result = scanf("%s",p->bundle_priority);
+	   result = scanf("%9s",p->bundle_priority);
        clear_stdin();
        if(result > 0){
     	  if(strcmp(p->bundle_priority,"BULK")==0 || strcmp(p->bundle_priority,"NORMAL")==0 || strcmp(p->bundle_priority,"EXPEDITED")==0)
@@ -472,10 +581,10 @@ int configure_application(const char *filename){
 	   printf("\nDo you want to sign bundle? (YES, NO): ");
 	   printf("\n-> ");
 	   fflush(stdout);
-	   result = scanf("%s",p->bundle_sign);
+	   result = scanf("%3s",p->bundle_sign);
 	   clear_stdin();
 	   if(result > 0){
-		  if(strcmp(p->bundle_sign,"YES")==0 || strcmp(p->bundle_sign,"NO")==0)
+		  if(strcmp(p->bundle_sign,"YES")==0 || strcmp(p->bundle_sign, "yes") || strcmp(p->bundle_sign, "NO") ||  strcmp(p->bundle_sign,"no")==0)
 			 break;
 		  else
 			 printf("\nUnknown response.");
@@ -484,14 +593,15 @@ int configure_application(const char *filename){
 
 	for(;;){
 	   printf("\nPlease enter the file to save bulletins: ");
-	   printf("\n-> ");
+	   printf("\n[255 Characters MAX]");
+       printf("\n-> ");
 	   fflush(stdout);
-	   result = scanf("%s",p->bulletin_file);
+	   result = scanf("%255s",p->bulletin_file);
 	   clear_stdin();
 	   if(result > 0)
 		  break;
 	   else
-			 printf("\nUnknown response.");
+		  printf("\nUnknown response.");
 	}
 
 	for(;;){
@@ -515,11 +625,11 @@ int configure_application(const char *filename){
        unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
 
 	for(i=0; i<p->number_of_authorities; i++){
-		p->authority_eid[i] = malloc(sizeof(char)*127);
+		p->authority_eid[i] = malloc(sizeof(char)*127+1);
 		if(p->authority_eid[i] == NULL)
 		   unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
 
-	    p->authority_key_file[i] = malloc(sizeof(char)*255);
+	    p->authority_key_file[i] = malloc(sizeof(char)*255+1);
 	    if(p->authority_key_file[i] == NULL)
 	       unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
 	}
@@ -527,9 +637,10 @@ int configure_application(const char *filename){
 	for(i=0; i<p->number_of_authorities; i++)
 	   for(;;){
 	     printf("\nPlease enter the authority EID%d: ",i);
+         printf("\n[127 Characters MAX]");
 	     printf("\n-> ");
 	     fflush(stdout);
-	     result = scanf("%s",p->authority_eid[i]);
+	     result = scanf("%127s",p->authority_eid[i]);
 	     clear_stdin();
 	     if(result > 0)
 	    	break;
@@ -539,9 +650,10 @@ int configure_application(const char *filename){
 	for(i=0; i<p->number_of_authorities; i++)
  	   for(;;){
  		 printf("\nPlease enter %s public key file: ",p->authority_eid[i]);
- 		 printf("\n-> ");
+ 		 printf("\[255 Characters MAX]");
+         printf("\n-> ");
  		 fflush(stdout);
-         result = scanf("%s",p->authority_key_file[i]);
+         result = scanf("%255s",p->authority_key_file[i]);
          clear_stdin();
          if(result > 0)
     	    break;
@@ -751,7 +863,7 @@ void read_parameters_from_file(const char *filename,dtka_parameters *parameters)
 
     memset(parameters,0,sizeof(dtka_parameters));
 
-    parameters->dtka_output = malloc(sizeof(char)*6+1);
+    parameters->dtka_output = malloc(sizeof(char)*6);
     if(parameters->dtka_output == NULL)
        unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
 
@@ -763,7 +875,7 @@ void read_parameters_from_file(const char *filename,dtka_parameters *parameters)
     if(parameters->hash_algorithm == NULL)
        unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
 
-    parameters->key_algorithm = malloc(sizeof(char)*3+1);
+    parameters->key_algorithm = malloc(sizeof(char)*3);
     if(parameters->key_algorithm == NULL)
        unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
 
@@ -787,7 +899,7 @@ void read_parameters_from_file(const char *filename,dtka_parameters *parameters)
     if(parameters->new_private_key_file == NULL)
        unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
 
-    parameters->key_format = malloc(sizeof(char)*3+1);
+    parameters->key_format = malloc(sizeof(char)*3);
     if(parameters->key_format == NULL)
        unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
 
@@ -1142,12 +1254,10 @@ int do_cryptographic_tests(){
     float dsa_512_time;
     float dsa_1024_time;
     float dsa_2048_time;
-    float dsa_4096_time;
 
     float rsa_512_time;
     float rsa_1024_time;
     float rsa_2048_time;
-    float rsa_4096_time;
 
     float sha224_time;
     float sha256_time;
@@ -1193,7 +1303,7 @@ int do_cryptographic_tests(){
     printf("\nUnibo-DTKA: Hashing Result.....");
 
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    length = hash_message_text("TEST",test,SHA224HASH);
+    length = sl_hash_message_text("TEST",test,SHA224HASH);
     if(length < 0)
        return -1;
     sha224_time = (float)clock()/CLOCKS_PER_SEC - start_time;
@@ -1217,7 +1327,7 @@ int do_cryptographic_tests(){
     printf("\nUnibo-DTKA: Hashing Result.....");
 
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    length = hash_message_text("TEST",test,SHA256HASH);
+    length = sl_hash_message_text("TEST",test,SHA256HASH);
     if(length < 0)
        return -1;
     sha256_time = (float)clock()/CLOCKS_PER_SEC - start_time;
@@ -1240,7 +1350,7 @@ int do_cryptographic_tests(){
     printf("\nUnibo-DTKA: Hashing Result.....");
 
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    length = hash_message_text("TEST",test,SHA384HASH);
+    length = sl_hash_message_text("TEST",test,SHA384HASH);
     if(length < 0)
        return -1;
     sha384_time = (float)clock()/CLOCKS_PER_SEC - start_time;
@@ -1262,7 +1372,7 @@ int do_cryptographic_tests(){
     printf("\n\nUnibo-DTKA: Hashing Result.....");
 
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    length = hash_message_text("TEST",test,SHA512HASH);
+    length = sl_hash_message_text("TEST",test,SHA512HASH);
     if(length < 0)
        return -1;
     sha512_time = (float)clock()/CLOCKS_PER_SEC - start_time;
@@ -1284,7 +1394,7 @@ int do_cryptographic_tests(){
     printf("\n\nUnibo-DTKA: Hashing Result.....");
 
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    length = hash_message_text("TEST",test,MD5HASH);
+    length = sl_hash_message_text("TEST",test,MD5HASH);
     if(length < 0)
        return -1;
     md5_time = (float)clock()/CLOCKS_PER_SEC - start_time;
@@ -1306,7 +1416,7 @@ int do_cryptographic_tests(){
     printf("\n\nUnibo-DTKA: Hashing Result.....");
 
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    length = hash_message_text("TEST",test,MD4HASH);
+    length = sl_hash_message_text("TEST",test,MD4HASH);
     if(length < 0)
        return -1;
     md4_time = (float)clock()/CLOCKS_PER_SEC - start_time;
@@ -1328,7 +1438,7 @@ int do_cryptographic_tests(){
     printf("\n\nUnibo-DTKA: Hashing Result.....");
 
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    length = hash_message_text("TEST",test,RIPEMD160HASH);
+    length = sl_hash_message_text("TEST",test,RIPEMD160HASH);
     if(length < 0)
        return -1;
     ripemd160_time = (float)clock()/CLOCKS_PER_SEC - start_time;
@@ -1350,7 +1460,7 @@ int do_cryptographic_tests(){
 
     printf("\n\nUnibo-DTKA: Hashing Result.....");
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    hmac_hash("TEST","KEY",MD5HASH,test);
+    sl_hmac_hash("TEST","KEY",MD5HASH,test);
     hmac_md5_time = (float)clock()/CLOCKS_PER_SEC - start_time;
 
     printf("\nHmac:%s",test);
@@ -1370,7 +1480,7 @@ int do_cryptographic_tests(){
 
     printf("\n\nUnibo-DTKA: Hashing Result.....");
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    hmac_hash("TEST","KEY",MD4HASH,test);
+    sl_hmac_hash("TEST","KEY",MD4HASH,test);
     hmac_md4_time = (float)clock()/CLOCKS_PER_SEC - start_time;
 
     printf("\nHmac:%s",test);
@@ -1390,7 +1500,7 @@ int do_cryptographic_tests(){
 
     printf("\n\nUnibo-DTKA: Hashing Result.....");
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    hmac_hash("TEST","KEY",RIPEMD160HASH,test);
+    sl_hmac_hash("TEST","KEY",RIPEMD160HASH,test);
     hmac_ripemd160_time = (float)clock()/CLOCKS_PER_SEC - start_time;
 
     printf("\nHmac:%s",test);
@@ -1410,7 +1520,7 @@ int do_cryptographic_tests(){
 
     printf("\n\nUnibo-DTKA: Hashing Result.....");
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    hmac_hash("TEST","KEY",SHA224HASH,test);
+    sl_hmac_hash("TEST","KEY",SHA224HASH,test);
     hmac_sha224_time = (float)clock()/CLOCKS_PER_SEC - start_time;
 
     printf("\nHmac:%s",test);
@@ -1430,7 +1540,7 @@ int do_cryptographic_tests(){
 
     printf("\n\nUnibo-DTKA: Hashing Result.....");
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    hmac_hash("TEST","KEY",SHA256HASH,test);
+    sl_hmac_hash("TEST","KEY",SHA256HASH,test);
     hmac_sha256_time = (float)clock()/CLOCKS_PER_SEC - start_time;
 
     printf("\nHmac:%s",test);
@@ -1450,7 +1560,7 @@ int do_cryptographic_tests(){
 
     printf("\n\nUnibo-DTKA: Hashing Result.....");
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    hmac_hash("TEST","KEY",SHA384HASH,test);
+    sl_hmac_hash("TEST","KEY",SHA384HASH,test);
     hmac_sha384_time = (float)clock()/CLOCKS_PER_SEC - start_time;
 
     printf("\nHmac:%s",test);
@@ -1470,7 +1580,7 @@ int do_cryptographic_tests(){
 
     printf("\n\nUnibo-DTKA: Hashing Result.....");
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    hmac_hash("TEST","KEY",SHA512HASH,test);
+    sl_hmac_hash("TEST","KEY",SHA512HASH,test);
     hmac_sha512_time = (float)clock()/CLOCKS_PER_SEC - start_time;
 
     printf("\nHmac:%s",test);
@@ -1484,7 +1594,7 @@ int do_cryptographic_tests(){
     printf("\nUnibo-DTKA: Generating 512 bit DSA key pair....\n");
 
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    length = generate_and_show_DSA_key_pair(512);
+    length = sl_generate_and_show_DSA_key_pair(512);
     if(length < 0){
        printf("\n\nUnibo-DTKA: Cryptographic test is failed.\n");
        return -1;
@@ -1494,7 +1604,7 @@ int do_cryptographic_tests(){
     printf("\nUnibo-DTKA: Generating 1024 bit DSA key pair....\n");
 
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    length = generate_and_show_DSA_key_pair(1024);
+    length = sl_generate_and_show_DSA_key_pair(1024);
     if(length < 0){
        printf("\n\nUnibo-DTKA: Cryptographic test is failed.\n");
        return -1;
@@ -1504,28 +1614,18 @@ int do_cryptographic_tests(){
     printf("\nUnibo-DTKA: Generating 2048 bit DSA key pair....\n");
 
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    length = generate_and_show_DSA_key_pair(2048);
+    length = sl_generate_and_show_DSA_key_pair(2048);
     if(length < 0){
        printf("\n\nUnibo-DTKA: Cryptographic test is failed.\n");
        return -1;
     }
     dsa_2048_time = (float)clock()/CLOCKS_PER_SEC - start_time;
 
-    printf("\nUnibo-DTKA: Generating 4096 bit DSA key pair....\n");
-
-    start_time = (float)clock()/CLOCKS_PER_SEC;
-    length = generate_and_show_DSA_key_pair(4096);
-    if(length < 0){
-       printf("\n\nUnibo-DTKA: Cryptographic test is failed.\n");
-       return -1;
-    }
-    dsa_4096_time = (float)clock()/CLOCKS_PER_SEC - start_time;
-
     printf("\n\nUnibo-DTKA: Try to generate RSA key pairs....\n");
     printf("\nUnibo-DTKA: Generating 512 bit RSA key pair....\n");
 
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    length = generate_and_show_RSA_key_pair(512);
+    length = sl_generate_and_show_RSA_key_pair(512);
     if(length < 0){
        printf("\n\nUnibo-DTKA: Cryptographic test is failed.\n");
        return -1;
@@ -1535,7 +1635,7 @@ int do_cryptographic_tests(){
     printf("\nUnibo-DTKA: Generating 1024 bit RSA key pair....\n");
 
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    length = generate_and_show_RSA_key_pair(1024);
+    length = sl_generate_and_show_RSA_key_pair(1024);
     if(length < 0){
        printf("\n\nUnibo-DTKA: Cryptographic test is failed.\n");
        return -1;
@@ -1545,25 +1645,15 @@ int do_cryptographic_tests(){
     printf("\nUnibo-DTKA: Generating 2048 bit RSA key pair....\n");
 
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    length = generate_and_show_RSA_key_pair(2048);
+    length = sl_generate_and_show_RSA_key_pair(2048);
     if(length < 0){
        printf("\n\nUnibo-DTKA: Cryptographic test is failed.\n");
        return -1;
     }
     rsa_2048_time = (float)clock()/CLOCKS_PER_SEC - start_time;
 
-    printf("\nUnibo-DTKA: Generating 4096 bit RSA key pair....\n");
-
-    start_time = (float)clock()/CLOCKS_PER_SEC;
-    length = generate_and_show_RSA_key_pair(4096);
-    if(length < 0){
-       printf("\n\nUnibo-DTKA: Cryptographic test is failed.\n");
-       return -1;
-    }
-    rsa_4096_time = (float)clock()/CLOCKS_PER_SEC - start_time;
-
     dsa = DSA_new();
-    generate_DSA_key_pair(1024,32,dsa);
+    sl_generate_DSA_key_pair(1024,32,dsa);
     sign = calloc(DSA_size(dsa),sizeof(unsigned char));
     if(sign == NULL)
        unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
@@ -1572,7 +1662,7 @@ int do_cryptographic_tests(){
     printf("\nTest message: %s",test_message);
 
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    res = sign_with_DSA_private_key(dsa,test_message,strlen((char*)test_message),sign,&sign_length);
+    res = sl_sign_with_DSA_private_key(dsa,test_message,strlen((char*)test_message),sign,&sign_length);
     if(res < 0){
        printf("\n\nUnibo-DTKA: Cryptographic test is failed.\n");
        return -1;
@@ -1582,7 +1672,7 @@ int do_cryptographic_tests(){
     printf("\nUnibo-DTKA: Verifying the signed message.");
 
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    res = verify_with_DSA_public_key(dsa,test_message,strlen((char*)test_message),sign,sign_length);
+    res = sl_verify_with_DSA_public_key(dsa,test_message,strlen((char*)test_message),sign,sign_length);
     if(res != 1){
        printf("\n\nUnibo-DTKA: Cryptographic test is failed.\n");
        return -1;
@@ -1591,7 +1681,7 @@ int do_cryptographic_tests(){
     printf("\nUnibo-DTKA: Sign Verified.");
     printf("\nUnibo-DTKA: Verifying bogus signature....");
     sign[0] = sign[0]+1;
-    res = verify_with_DSA_public_key(dsa,test_message,strlen((char*)test_message),sign,sign_length);
+    res = sl_verify_with_DSA_public_key(dsa,test_message,strlen((char*)test_message),sign,sign_length);
     if(res != -1){
        printf("\n\nUnibo-DTKA: Cryptographic test is failed.\n");
        return -1;
@@ -1602,7 +1692,7 @@ int do_cryptographic_tests(){
     DSA_free(dsa);
 
     rsa = RSA_new();
-    generate_RSA_key_pair(1024,17,rsa);
+    sl_generate_RSA_key_pair(1024,17,rsa);
     sign = calloc(RSA_size(rsa),sizeof(unsigned char));
     if(sign == NULL)
        unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
@@ -1611,7 +1701,7 @@ int do_cryptographic_tests(){
     printf("\nTest message: %s",test_message);
 
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    res = sign_with_RSA_private_key(rsa,test_message,strlen((char*)test_message),sign,&sign_length);
+    res = sl_sign_with_RSA_private_key(rsa,test_message,strlen((char*)test_message),sign,&sign_length);
     if(res < 0){
        printf("\n\nUnibo-DTKA: Cryptographic test is failed.\n");
        return -1;
@@ -1621,7 +1711,7 @@ int do_cryptographic_tests(){
     printf("\nUnibo-DTKA: Verifying the signed message.");
 
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    res = verify_with_RSA_public_key(rsa,test_message,strlen((char*)test_message),sign,sign_length);
+    res = sl_verify_with_RSA_public_key(rsa,test_message,strlen((char*)test_message),sign,sign_length);
     if(res != 1){
        printf("\n\nUnibo-DTKA: Cryptographic test is failed.\n");
        return -1;
@@ -1630,7 +1720,7 @@ int do_cryptographic_tests(){
     printf("\nUnibo-DTKA: Sign Verified.");
     printf("\nUnibo-DTKA: Verifying bogus signature....");
     sign[0] = sign[0]+1;
-    res = verify_with_RSA_public_key(rsa,test_message,strlen((char*)test_message),sign,sign_length);
+    res = sl_verify_with_RSA_public_key(rsa,test_message,strlen((char*)test_message),sign,sign_length);
     if(res != 0){
        printf("\n\nUnibo-DTKA: Cryptographic test is failed.\n");
        return -1;
@@ -1659,12 +1749,10 @@ int do_cryptographic_tests(){
     printf("\n\nUnibo-DTKA: DSA 512 bit key pair generated in %f seconds.",dsa_512_time);
     printf("\nUnibo-DTKA: DSA 1024 bit key pair generated in %f seconds.",dsa_1024_time);
     printf("\nUnibo-DTKA: DSA 2048 bit key pair generated in %f seconds.",dsa_2048_time);
-    printf("\nUnibo-DTKA: DSA 4096 bit key pair generated in %f seconds.",dsa_4096_time);
 
     printf("\n\nUnibo-DTKA: RSA 512 bit key pair generated in %f seconds.",rsa_512_time);
     printf("\nUnibo-DTKA: RSA 1024 bit key pair generated in %f seconds.",rsa_1024_time);
     printf("\nUnibo-DTKA: RSA 2048 bit key pair generated in %f seconds.",rsa_2048_time);
-    printf("\nUnibo-DTKA: RSA 4096 bit key pair generated in %f seconds.",rsa_4096_time);
 
     printf("\n\nUnibo-DTKA: DSA signing time in %f seconds.",signing_dsa_time);
     printf("\nUnibo-DTKA: DSA verifying time in %f seconds.",verifying_dsa_time);
@@ -1686,7 +1774,7 @@ int do_erasure_test(){
     float decode_time;
 
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    encoded_message = encode_blocks(5,7,(unsigned char*)message,30);
+    encoded_message = el_encode_blocks(5,7,(unsigned char*)message,30);
 	encode_time = (float)clock()/CLOCKS_PER_SEC - start_time;
 
     received_message = calloc(1,sizeof(fec_received_data));
@@ -1717,12 +1805,12 @@ int do_erasure_test(){
     received_message->index_blocks[3] = 3;
     received_message->index_blocks[4] = 4;
 	
-    message = calloc(received_message->block_size*received_message->K,sizeof(unsigned char));
+    message = calloc((received_message->block_size*received_message->K)+1,sizeof(unsigned char));
     if(message == NULL)
        unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
 
     start_time = (float)clock()/CLOCKS_PER_SEC;
-    decode_blocks(received_message,(unsigned char*)message);
+    el_decode_blocks(received_message,(unsigned char*)message);
     decode_time = (float)clock()/CLOCKS_PER_SEC - start_time;
 
     if(strcmp(message,"ABCDEFGHIJKLMNOPQRSTUVWXYZ1234")==0){
@@ -1809,16 +1897,16 @@ int do_connection_test(){
 
 	priority.priority = BP_PRIORITY_NORMAL;
 	printf("\nInitialization of the connection parameters....");
-    wrapper_init(&connection, BP_PAYLOAD_MEM, 'N', 30, priority, 30,"dtka","4000");
+    cw_wrapper_init(&connection, BP_PAYLOAD_MEM, 'N', 30, priority, 30,"dtka","4000");
     printf("\nRegistration to the bundle daemon....");
-    register_to_dtn_daemon(&connection);
+    cw_register_to_dtn_daemon(&connection);
 
     printf("\nLocal EID = %s\n", connection.local_eid.uri);
     printf("\nTry to Send bundle to itself...");
     printf("\nMessage: ABC");
-    wrapper_send(&connection,(unsigned char*)message,3,connection.local_eid.uri);
+    cw_wrapper_send(&connection,(unsigned char*)message,3,connection.local_eid.uri);
     printf("\nTry to Receive bundle....");
-    wrapper_receive(&connection);
+    cw_wrapper_receive(&connection);
     printf("\nReceived Message: %s",connection.message);
 
     if(strcmp((char*)connection.message,"ABC")==0)
@@ -1846,16 +1934,16 @@ int prepare_key_message(unsigned char *key){
     FILE *fp;
 
     if(strcmp(p->key_algorithm,"RSA")==0 && strcmp(p->key_format,"PEM")==0)
-       generate_RSA_key_pair_files(p->key_length,p->rsa_exp,p->new_private_key_file,p->new_public_key_file,PEM_FORMAT);
+       sl_generate_RSA_key_pair_files(p->key_length,p->rsa_exp,p->new_private_key_file,p->new_public_key_file,PEM_FORMAT);
 
     if(strcmp(p->key_algorithm,"RSA")==0 && strcmp(p->key_format,"DER")==0)
-       generate_RSA_key_pair_files(p->key_length,p->rsa_exp,p->new_private_key_file,p->new_public_key_file,DER_FORMAT);
+       sl_generate_RSA_key_pair_files(p->key_length,p->rsa_exp,p->new_private_key_file,p->new_public_key_file,DER_FORMAT);
 
     if(strcmp(p->key_algorithm,"DSA")==0 && strcmp(p->key_format,"PEM")==0)
-       generate_DSA_key_pair_files(p->key_length,p->rand_length,p->new_private_key_file,p->new_public_key_file,PEM_FORMAT);
+       sl_generate_DSA_key_pair_files(p->key_length,p->rand_length,p->new_private_key_file,p->new_public_key_file,PEM_FORMAT);
 
     if(strcmp(p->key_algorithm,"DSA")==0 && strcmp(p->key_format,"DER")==0)
-       generate_DSA_key_pair_files(p->key_length,p->rand_length,p->new_private_key_file,p->new_public_key_file,DER_FORMAT);
+       sl_generate_DSA_key_pair_files(p->key_length,p->rand_length,p->new_private_key_file,p->new_public_key_file,DER_FORMAT);
 
     key_length = 0;
     c = 0;
@@ -1902,13 +1990,13 @@ int serialize_message(unsigned char *serialized_message,unsigned short EID_lengt
     	   howmany = howmany + sizeof(unsigned int);
     	   if(strcmp(p->key_algorithm,"RSA")==0){
         	  rsa = RSA_new();
-        	  read_RSA_key_from_file(p->public_key_file,PUBLIC_KEY,rsa);
+        	  sl_read_RSA_key_from_file(p->public_key_file,PUBLIC_KEY,rsa);
         	  howmany = howmany + RSA_size(rsa);
          	  RSA_free(rsa);
            }
            if(strcmp(p->key_algorithm,"DSA")==0){
         	  dsa = DSA_new();
-        	  read_DSA_key_from_file(p->public_key_file,PUBLIC_KEY,dsa);
+        	  sl_read_DSA_key_from_file(p->public_key_file,PUBLIC_KEY,dsa);
         	  howmany = howmany + DSA_size(dsa);
         	  DSA_free(dsa);
            }
@@ -1949,7 +2037,7 @@ int serialize_message(unsigned char *serialized_message,unsigned short EID_lengt
     if(p->sign == 1){
        if(strcmp(p->key_algorithm,"RSA")==0){
     	  rsa = RSA_new();
-    	  read_RSA_key_from_file(p->public_key_file,PUBLIC_KEY,rsa);
+    	  sl_read_RSA_key_from_file(p->public_key_file,PUBLIC_KEY,rsa);
     	  sign_length = RSA_size(rsa);
     	  buffer_sign = calloc(sign_length,sizeof(unsigned char));
     	  if(buffer_sign == NULL)
@@ -1958,14 +2046,14 @@ int serialize_message(unsigned char *serialized_message,unsigned short EID_lengt
         }
     	if(strcmp(p->key_algorithm,"DSA")==0){
     	  dsa = DSA_new();
-    	  read_DSA_key_from_file(p->public_key_file,PUBLIC_KEY,dsa);
+    	  sl_read_DSA_key_from_file(p->public_key_file,PUBLIC_KEY,dsa);
     	  sign_length = DSA_size(dsa);
     	  buffer_sign = calloc(sign_length,sizeof(unsigned char));
     	  if(buffer_sign == NULL)
     		 unibo_dtka_error_handler(UNIBO_DTKA_EXIT_STATUS_NOT_ENOUGH_MEMORY_ERROR);
     	  DSA_free(dsa);
     	}
-    	sign_with_private_key_from_file(p->private_key_file,p->key_algorithm,buffer_sign,&sign_length,serialized_message,howmany);
+    	sl_sign_with_private_key_from_file(p->private_key_file,p->key_algorithm,buffer_sign,&sign_length,serialized_message,howmany);
     	cursor = cursor+data_length;
     	i_temp = htonl(sign_length);
     	memcpy(cursor,&i_temp,sizeof(unsigned int));
@@ -2020,6 +2108,7 @@ int deserialize_message(unsigned char *serialized_message,unsigned short *EID_le
 
 	memcpy(data,cursor,*data_length);
 
+
 	if(p->sign == 1){
 		cursor = cursor + *data_length;
 		message_length = message_length + *data_length;
@@ -2039,7 +2128,7 @@ int deserialize_message(unsigned char *serialized_message,unsigned short *EID_le
         memcpy(buffer_message,serialized_message,message_length);
         memcpy(buffer_sign,cursor,sign_length);
 
-        result = verify_with_public_key_from_file(p->public_key_file,p->key_algorithm,buffer_sign,sign_length,buffer_message,message_length);
+        result = sl_verify_with_public_key_from_file(p->public_key_file,p->key_algorithm,buffer_sign,sign_length,buffer_message,message_length);
 
         return result;
 	}else
@@ -2287,7 +2376,7 @@ void *receive_bulletin(){
 	received_hash = calloc(SHA256_DIGEST_LENGTH*2+1,sizeof(char));
 
 	for(;;){
-	   wrapper_receive(&receive_bulletin_connection);
+	   cw_wrapper_receive(&receive_bulletin_connection);
 	   cursor = receive_bulletin_connection.message;
        transmitted++;
        fprintf(p->fp_log,"\nUnibo-DTKA Client: Received Bulletin from %s",receive_bulletin_connection.bundle_source);
@@ -2390,7 +2479,7 @@ void reconstruct_bulletin(){
             received_message->index_blocks[i] = p->information_block_number + 1;
          }current = current->next;
        }
-       decode_blocks(received_message,message);
+       el_decode_blocks(received_message,message);
     }
 
 }
